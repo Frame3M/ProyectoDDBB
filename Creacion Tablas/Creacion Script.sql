@@ -180,7 +180,7 @@ BEGIN
 	idTipoFactura INT,
 	ciudad VARCHAR(60),
 	idTipoCliente INT,
-	generoCliente CHAR(10) CHECK(genero IN ('Male','Female')),
+	generoCliente CHAR(10) CHECK(generoCliente IN ('Male','Female')),
 	fecha DATE,
 	hora TIME,
 	legajoEmp INT,
