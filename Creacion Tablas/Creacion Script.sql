@@ -3,18 +3,18 @@ BASE DE DATOS APLICADA
 
 ORTEGA MARCO ANTONIO - 44108566
 
-Luego de decidirse por un motor de base de datos relacional, llegÛ el momento de generar la
+Luego de decidirse por un motor de base de datos relacional, lleg√≥ el momento de generar la
 base de datos.
-Deber· instalar el DMBS y documentar el proceso. No incluya capturas de pantalla. Detalle
-las configuraciones aplicadas (ubicaciÛn de archivos, memoria asignada, seguridad, puertos,
-etc.) en un documento como el que le entregarÌa al DBA.
-Cree la base de datos, entidades y relaciones. Incluya restricciones y claves. Deber· entregar
-un archivo .sql con el script completo de creaciÛn (debe funcionar si se lo ejecuta ìtal cualî es
-entregado). Incluya comentarios para indicar quÈ hace cada mÛdulo de cÛdigo.
-Genere store procedures para manejar la inserciÛn, modificado, borrado (si corresponde,
-tambiÈn debe decidir si determinadas entidades solo admitir·n borrado lÛgico) de cada tabla.
-Los nombres de los store procedures NO deben comenzar con ìSPî.
-Genere esquemas para organizar de forma lÛgica los componentes del sistema y aplique esto
+Deber√° instalar el DMBS y documentar el proceso. No incluya capturas de pantalla. Detalle
+las configuraciones aplicadas (ubicaci√≥n de archivos, memoria asignada, seguridad, puertos,
+etc.) en un documento como el que le entregar√≠a al DBA.
+Cree la base de datos, entidades y relaciones. Incluya restricciones y claves. Deber√° entregar
+un archivo .sql con el script completo de creaci√≥n (debe funcionar si se lo ejecuta ‚Äútal cual‚Äù es
+entregado). Incluya comentarios para indicar qu√© hace cada m√≥dulo de c√≥digo.
+Genere store procedures para manejar la inserci√≥n, modificado, borrado (si corresponde,
+tambi√©n debe decidir si determinadas entidades solo admitir√°n borrado l√≥gico) de cada tabla.
+Los nombres de los store procedures NO deben comenzar con ‚ÄúSP‚Äù.
+Genere esquemas para organizar de forma l√≥gica los componentes del sistema y aplique esto
 */
 
 IF NOT EXISTS (SELECT * FROM SYS.DATABASES WHERE name = 'G13COM5600')
@@ -117,19 +117,6 @@ BEGIN
 END
 GO
 
-IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
-TABLE_SCHEMA = 'clientes' AND TABLE_NAME = 'Cliente')
-BEGIN
-	CREATE TABLE clientes.Cliente(
-	id INT IDENTITY (1,1) PRIMARY KEY,
-	ciudad VARCHAR(60),
-	genero CHAR(10) CHECK(genero IN ('Male','Female')),
-	idTipo INT,
-
-	CONSTRAINT FK_Tipo FOREIGN KEY (idTipo) REFERENCES clientes.TipoCliente(id))
-END
-GO
-
 --- TABLAS PERTENECIENTES AL SCHEMA 'CATALOGOS'
 
 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
@@ -190,16 +177,18 @@ TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'Factura')
 BEGIN
 	CREATE TABLE ventas.Factura(
 	idFactura CHAR(11) PRIMARY KEY NONCLUSTERED,
-	idCliente INT,
-	legajoEmp INT,
-	hora TIME,
+	idTipoFactura INT,
+	ciudad VARCHAR(60),
+	idTipoCliente INT,
+	generoCliente CHAR(10) CHECK(genero IN ('Male','Female')),
 	fecha DATE,
-	idTipo INT,
+	hora TIME,
+	legajoEmp INT,
 	estado char(6) DEFAULT 'Impaga' CHECK(estado IN ('Impaga','Pagada')),
-
-	CONSTRAINT FK_Cliente FOREIGN KEY (idCliente) REFERENCES clientes.Cliente(id),
+	
 	CONSTRAINT FK_Empleado FOREIGN KEY (legajoEmp) REFERENCES recursosHumanos.Empleado(legajo),
-	CONSTRAINT FK_TipoFactura FOREIGN KEY (idTipo) REFERENCES ventas.TipoFactura(id))
+	CONSTRAINT FK_TipoFactura FOREIGN KEY (idTipoFactura) REFERENCES ventas.TipoFactura(id)),
+	CONSTRAINT FK_TipoCliente FOREIGN KEY (idTipoCliente) REFERENCES clientes.TipoCliente(id))
 END
 GO
 
