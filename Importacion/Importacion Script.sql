@@ -3,24 +3,24 @@ BASE DE DATOS APLICADA
 
 ORTEGA MARCO ANTONIO - 44108566
 
-Se requiere que importe toda la informaci�n antes mencionada a la base de datos:
-	� Genere los objetos necesarios (store procedures, funciones, etc.) para importar los
-	archivos antes mencionados. Tenga en cuenta que cada mes se recibir�n archivos de
+Se requiere que importe toda la información antes mencionada a la base de datos:
+	• Genere los objetos necesarios (store procedures, funciones, etc.) para importar los
+	archivos antes mencionados. Tenga en cuenta que cada mes se recibirán archivos de
 	novedades con la misma estructura, pero datos nuevos para agregar a cada maestro.
 
-	� Considere este comportamiento al generar el c�digo. Debe admitir la importaci�n de
-	novedades peri�dicamente.
+	• Considere este comportamiento al generar el código. Debe admitir la importación de
+	novedades periódicamente.
 
-	� Cada maestro debe importarse con un SP distinto. No se aceptar�n scripts que
+	• Cada maestro debe importarse con un SP distinto. No se aceptarán scripts que
 	realicen tareas por fuera de un SP.
 
-	� La estructura/esquema de las tablas a generar ser� decisi�n suya. Puede que deba
-	realizar procesos de transformaci�n sobre los maestros recibidos para adaptarlos a la
+	• La estructura/esquema de las tablas a generar será decisión suya. Puede que deba
+	realizar procesos de transformación sobre los maestros recibidos para adaptarlos a la
 	estructura requerida.
 
-	� Los archivos CSV/JSON no deben modificarse. En caso de que haya datos mal
-	cargados, incompletos, err�neos, etc., deber� contemplarlo y realizar las correcciones
-	en el fuente SQL. (Ser�a una excepci�n si el archivo est� malformado y no es posible
+	• Los archivos CSV/JSON no deben modificarse. En caso de que haya datos mal
+	cargados, incompletos, erróneos, etc., deberá contemplarlo y realizar las correcciones
+	en el fuente SQL. (Sería una excepción si el archivo está malformado y no es posible
 	interpretarlo como JSON o CSV).
 */
 
@@ -147,8 +147,8 @@ AS
 BEGIN
 	CREATE TABLE #TempMedios(
 	vacio VARCHAR(100),
-	nombreEsp VARCHAR(100),
-	nombreIng VARCHAR(100))
+	nombreIng VARCHAR(100),
+	nombreEsp VARCHAR(100))
 
 	DECLARE @query NVARCHAR(MAX)
 	SET @query = 'INSERT INTO #TempMedios SELECT * 
@@ -166,7 +166,7 @@ BEGIN
 	--CARGO LA TABLA QUE CONTIENE MEDIOS DE PAGO
 	INSERT INTO ventas.MedioDePago (nombreEsp,nombreIng)
 	SELECT nombreEsp,nombreing FROM #TempMedios t 
-	WHERE NOT EXISTS (SELECT 1 FROM ventas.MedioDePago mp WHERE mp.nombreEsp = t.nombreEsp AND mp.nombreIng = mp.nombreEsp)
+	WHERE NOT EXISTS (SELECT 1 FROM ventas.MedioDePago mp WHERE mp.nombreEsp = t.nombreEsp AND mp.nombreIng = mp.nombreIng)
 
 	DROP TABLE #TempMedios
 END
@@ -212,21 +212,21 @@ CREATE OR ALTER PROCEDURE importacion.importarCatalogo ( @path VARCHAR(300) )
 AS
 BEGIN
 	CREATE TABLE #TempCatalogo(
-	id VARCHAR(100),
+	VOID VARCHAR(100),
 	categoria VARCHAR(100),
 	nombre VARCHAR(100),
 	precio VARCHAR(100),
 	precioRef VARCHAR(100),
 	unidadRef VARCHAR(100),
-	fecha smalldatetime)
+	fecha VARCHAR(100))
 
 	DECLARE @query NVARCHAR(MAX)
 	SET @query = 'BULK INSERT #TempCatalogo
-				 FROM''' + @path + '''
+				 FROM ''' + @path + '''
 				 WITH(
 					 FIELDTERMINATOR = '','',
-					 ROWTERMINATOR = ''\n'',
-					 CODEPAGE = ''ACP'',
+					 ROWTERMINATOR = ''0x0a'',
+					 CODEPAGE = ''65001'',
 					 FIRSTROW = 2,
 					 FORMAT = ''CSV'',
 					 MAXERRORS = 1)';
@@ -240,54 +240,201 @@ BEGIN
 		RETURN
 	END CATCH
 
-	SELECT * FROM #TempCatalogo
+	UPDATE #TempCatalogo SET
+		precio = CAST(precio AS DECIMAL(9,2)),
+		precioRef = CAST(precioRef AS DECIMAL(9,2)),
+		fecha = CONVERT(SMALLDATETIME,fecha);
+
+	--SE ELIMINAN COPIAS QUE CONTENGA LA TABLA TEMPORAL
+	WITH Duplicados AS ( SELECT ROW_NUMBER() OVER(PARTITION BY nombre,precio ORDER BY nombre,precio ASC) AS COPIA,nombre,precio FROM #TempCatalogo)
+	DELETE FROM Duplicados WHERE COPIA > 1
+
+	--CARGO LA TABLA QUE CONTIENE PRODUCTOS
+	INSERT INTO catalogos.Producto (nombre,precio,precioRef,unidadRef,fecha,idCategoria)
+	SELECT nombre,precio,precioRef,unidadRef,fecha,c.id FROM #TempCatalogo t
+	INNER JOIN catalogos.CategoriaProducto c ON c.categoria = t.categoria
+	WHERE nombre IS NOT NULL AND NOT EXISTS (SELECT 1 FROM catalogos.Producto p WHERE p.nombre = t.nombre AND p.precio = t.precio);
 
 	DROP TABLE #TempCatalogo
 END
 GO
 
-EXEC importacion.ConfExcelImport
-EXEC importacion.importarSucursal 'E:\PROYECTODDBB\TP_integrador_Archivos\Informacion_complementaria.xlsx'
-EXEC importacion.importarEmpleado 'E:\PROYECTODDBB\TP_integrador_Archivos\Informacion_complementaria.xlsx'
-EXEC importacion.importarMedioDePago'E:\PROYECTODDBB\TP_integrador_Archivos\Informacion_complementaria.xlsx'
+CREATE OR ALTER PROCEDURE importacion.importarAccesoriosElectronicos ( @path VARCHAR(300) )
+AS
+BEGIN
+	CREATE TABLE #TempAccElect(
+	nombre VARCHAR(100),
+	precioUSD VARCHAR(100))
 
-EXEC importacion.importarClasificacion 'E:\PROYECTODDBB\TP_integrador_Archivos\Informacion_complementaria.xlsx'
+	DECLARE @query NVARCHAR(MAX)
+	SET @query = 'INSERT INTO #TempAccElect SELECT * 
+				 FROM OPENROWSET(''Microsoft.ACE.OLEDB.12.0'',''Excel 12.0; Database=' + @path + ''',[Sheet1$])';
 
-EXEC importacion.importarCatalogo'E:\PROYECTODDBB\TP_integrador_Archivos\Productos\catalogo.csv'
+	BEGIN TRY
+	 EXEC sp_executesql @query
+	END TRY
+	BEGIN CATCH
+		DROP TABLE #TempAccElect
+		PRINT('ERROR ' + CAST(ERROR_NUMBER() AS VARCHAR) + ': NO SE PUDO REALIZAR LA CARGA')
+		RETURN
+	END CATCH
+	
+	UPDATE #TempAccElect SET
+		precioUSD = CAST(precioUSD AS DECIMAL(9,2));
 
+	--SE ELIMINAN DUPLICADOS QUE CONTENGA LA TABLA TEMPORAL
+	WITH Duplicados AS ( SELECT ROW_NUMBER() OVER(PARTITION BY nombre,precioUSD ORDER BY nombre,precioUSD ASC) AS COPIA,nombre,precioUSD FROM #TempAccElect)
+	DELETE FROM Duplicados WHERE COPIA > 1
 
-SELECT * FROM sucursales.Sucursal
+	--SE AÑADEN LA LINEA DE PRODUCTO TECNOLOGIA Y LA CATEGORIA ELECTRONICA
+	IF NOT EXISTS (SELECT 1 FROM catalogos.CategoriaProducto WHERE categoria = 'electronica')
+	BEGIN
+		INSERT INTO catalogos.LineaCategoria VALUES ('Tecnologia')
+		INSERT INTO catalogos.CategoriaProducto (categoria,idLineaCategoria) SELECT 'electronica',id FROM catalogos.LineaCategoria WHERE linea = 'Tecnologia'
+	END
 
-SELECT * FROM recursosHumanos.TurnoTrabajo
-SELECT * FROM recursosHumanos.CargoTrabajo
-SELECT * FROM recursosHumanos.Empleado
+	--DECLARO UNA VARIABLE QUE CONTENGA EL ID DE CATEGORIA ELECTRONICA
+	DECLARE @idCat INT;
+	SELECT @idCat = id FROM catalogos.CategoriaProducto WHERE categoria = 'electronica'
 
-SELECT * FROM ventas.MedioDePago
+	--CARGO LA TABLA QUE CONTIENE PRODUCTOS
+	INSERT INTO catalogos.Producto (nombre,precioUSD,idCategoria)
+	SELECT nombre,precioUSD,@idCat FROM #TempAccElect t
+	WHERE NOT EXISTS (SELECT 1 FROM catalogos.Producto p WHERE p.nombre = t.nombre AND p.precioUSD = t.precioUSD)
 
-SELECT * FROM catalogos.LineaCategoria
-SELECT * FROM catalogos.CategoriaProducto
+	DROP TABLE #TempAccElect
+END
+GO
 
+CREATE OR ALTER PROCEDURE importacion.importarProductosImportados ( @path VARCHAR(300) )
+AS
+BEGIN
+	CREATE TABLE #TempProdImport(
+		VOID VARCHAR(100),
+		nombre VARCHAR(100),
+		proveedor VARCHAR(100),
+		categoria VARCHAR(100),
+		cantidadXun VARCHAR(100),
+		precioUn VARCHAR(100))
 
-/*
+	DECLARE @query NVARCHAR(MAX)
+	SET @query = 'INSERT INTO #TempProdImport SELECT * 
+				 FROM OPENROWSET(''Microsoft.ACE.OLEDB.12.0'',''Excel 12.0; Database=' + @path + ''',[''Listado de Productos$''])';
 
-DROP TABLE catalogos.CategoriaProducto
-DROP TABLE catalogos.LineaCategoria
-DROP TABLE catalogos.Producto
-DROP TABLE clientes.Cliente
-DROP TABLE clientes.TipoCiente
-DROP TABLE recursosHumanos.CargoTrabajo
-DROP TABLE recursosHumanos.Empleado
-DROP TABLE recursosHumanos.TurnoTrabajo
-DROP TABLE sucursales.Sucursal
-DROP TABLE Ventas.Comprobante
-DROP TABLE Ventas.Factura
-DROP TABLE Ventas.ListaProducto
-DROP TABLE Ventas.MedioDePago
-DROP TABLE Ventas.TipoComprobante
-DROP TABLE Ventas.TipoFactura
+	BEGIN TRY
+		EXEC sp_executesql @query
+	END TRY
+	BEGIN CATCH
+		DROP TABLE #TempProdImport
+		PRINT('ERROR ' + CAST(ERROR_NUMBER() AS VARCHAR) + ': NO SE PUDO REALIZAR LA CARGA')
+		RETURN
+	END CATCH
 
-*/
+	--CAMBIO LOS TIPO DE DATO
+	UPDATE #TempProdImport SET
+		precioUn = CAST(precioUn AS DECIMAL(9,2));
 
-USE master
+	--SE ELIMINAN DUPLICADOS QUE CONTENGA LA TABLA TEMPORAL
+	WITH Duplicados AS ( SELECT ROW_NUMBER() OVER(PARTITION BY nombre,precioUn ORDER BY nombre,precioUn ASC) AS COPIA,nombre,precioUn FROM #TempProdImport)
+	DELETE FROM Duplicados WHERE COPIA > 1
+
+	--CARGO LA TABLA QUE CONTIENE CATEGORIAS
+	INSERT INTO catalogos.CategoriaProducto (categoria)
+	SELECT DISTINCT categoria FROM #TempProdImport t WHERE NOT EXISTS (SELECT 1 FROM catalogos.CategoriaProducto c WHERE c.categoria = t.categoria)
+
+	--CARGO LA TABLA QUE CONTIENE PRODUCTOS
+	INSERT INTO catalogos.Producto (nombre,proveedor,cantXUn,precio,idCategoria)
+	SELECT nombre,proveedor,cantidadXun,precioUn,c.id FROM #TempProdImport t
+	INNER JOIN  catalogos.CategoriaProducto c ON c.categoria = t.categoria
+	WHERE NOT EXISTS (SELECT 1 FROM catalogos.Producto p WHERE p.nombre = t.nombre AND p.precio = t.precioUn)
+
+	DROP TABLE #TempProdImport
+END
+GO
+
+CREATE OR ALTER PROCEDURE importacion.importarVentasRegistradas ( @path VARCHAR(300) )
+AS
+BEGIN
+	CREATE TABLE #TempVentas(
+		idFactura VARCHAR(100),
+		tipoFactura VARCHAR(100),
+		ciudad VARCHAR(100),
+		tipoCliente VARCHAR(100),
+		generoCliente VARCHAR(100),
+		producto NVARCHAR(100),
+		precioUn VARCHAR(100),
+		cantidad VARCHAR(100),
+		fecha VARCHAR(100),
+		hora VARCHAR(100),
+		medioDePago VARCHAR(100),
+		empleadoLeg VARCHAR(100),
+		identPago VARCHAR(100))
+
+	DECLARE @query NVARCHAR(MAX)
+	SET @query = 'BULK INSERT #TempVentas
+				 FROM ''' + @path + '''
+				 WITH(
+					 FIELDTERMINATOR = '';'',
+					 ROWTERMINATOR = ''0x0a'',
+					 CODEPAGE = ''65001'',
+					 FIRSTROW = 2,
+					 FORMAT = ''CSV'',
+					 MAXERRORS = 1)';
+
+	BEGIN TRY
+		EXEC sp_executesql @query
+	END TRY
+	BEGIN CATCH
+		DROP TABLE #TempVentas
+		PRINT('ERROR ' + CAST(ERROR_NUMBER() AS VARCHAR) + ': NO SE PUDO REALIZAR LA CARGA')
+		RETURN
+	END CATCH
+
+	UPDATE #TempVentas SET
+		idFactura = CAST(idFactura AS CHAR(11)),
+		tipoFactura = CAST(tipoFactura AS CHAR(1)),
+		generoCliente = CAST(generoCliente AS CHAR(10)),
+		precioUn = CAST(precioUn AS DECIMAL(9,2)),
+		cantidad = CAST(cantidad AS INT),
+		fecha = CAST(fecha AS DATE),
+		hora = CONVERT(TIME,hora,108),
+		empleadoLeg = CAST(empleadoLeg AS INT);
+
+	UPDATE #TempVentas SET
+		producto = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(producto, 'Ã±', 'ñ')
+		, 'Ã³', 'ó'), 'Ã©', 'é'), 'Ã¡', 'á'), 'Ãº', 'ú'), 'Ã­', 'í'), 'ÃƒÂº', 'ú'), 'Ã‘', 'Ñ') , 'Ã', 'Á'), '?', 'ñ'), 'Ã‘', 'Ñ'), 'Âº' , 'º'), 'å˜', 'ñ');
+
+	--CARGAMOS LA TABLA QUE CONTIENE LOS TIPO DE CLIENTE
+	INSERT INTO clientes.TipoCliente (tipo)
+	SELECT DISTINCT tipoCliente FROM #TempVentas t
+	WHERE NOT EXISTS (SELECT 1 FROM clientes.TipoCliente tc WHERE tc.tipo = t.tipoCliente)
+
+	--CARGAMOS LA TABLA QUE CONTIENE LOS TIPO DE FACTURA
+	INSERT INTO ventas.TipoFactura (tipo)
+	SELECT DISTINCT tipoFactura FROM #TempVentas t
+	WHERE NOT EXISTS (SELECT 1 FROM ventas.TipoFactura tf WHERE tf.tipo = t.tipoFactura)
+
+	--CARGAMOS LA TABLA QUE CONTIENE LAS FACTURAS
+	INSERT INTO ventas.Factura (idFactura,idTipoFactura,ciudad,idTipoCliente,generoCliente,fecha,hora,legajoEmp)
+	SELECT idFactura,tf.id,ciudad,tc.id,generoCliente,fecha,hora,empleadoLeg FROM #TempVentas t
+	INNER JOIN ventas.TipoFactura tf ON tf.tipo = t.tipoFactura
+	INNER JOIN clientes.TipoCliente tc ON tc.tipo = t.tipoCliente
+	WHERE t.idFactura IS NOT NULL AND t.empleadoLeg IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ventas.Factura vf WHERE vf.idFactura = t.idFactura)
+
+	--CARGAMOS LA TABLA QUE CONTIENE LA RELACION N:N ENTRE PRODUCTO Y FACTURA (LISTA DE PRODUCTOS)
+	INSERT INTO ventas.ListaProducto (idFactura,idProducto,cantidad)
+	SELECT idFactura,p.id,cantidad FROM #TempVentas t
+	INNER JOIN catalogos.Producto p ON p.nombre = t.producto
+	WHERE idFactura IS NOT NULL AND cantidad IS NOT NULL
+	AND NOT EXISTS (SELECT 1 FROM ventas.ListaProducto lp WHERE lp.idFactura = t.idFactura AND lp.idProducto = p.id AND lp.cantidad = t.cantidad)
+
+	--CARGAMOS LA TABLA QUE CONTIENE COMPROBANTES
+	 INSERT INTO ventas.Comprobante (idTipo,idFactura,idMedioPago)
+	 SELECT 1,idFactura,mp.id FROM #TempVentas t
+	 INNER JOIN ventas.MedioDePago mp ON mp.nombreING = t.medioDePago
+	 WHERE idFactura IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ventas.Comprobante c WHERE c.idFactura = t.idFactura)
+
+	DROP TABLE #TempVentas
+END
 GO
 
