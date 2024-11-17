@@ -145,7 +145,6 @@ TABLE_SCHEMA = 'catalogos' AND TABLE_NAME = 'Producto')
 BEGIN
 	CREATE TABLE catalogos.Producto(
 	id INT IDENTITY (1,1) PRIMARY KEY,
-	idProducto INT UNIQUE,
 	nombre VARCHAR(100),
 	precio DECIMAL(9,2),
 	precioUSD DECIMAL(9,2),
@@ -156,7 +155,7 @@ BEGIN
 	cantXUn VARCHAR(20),
 	idCategoria INT,
 
-	CONSTRAINT UNIQUE_Producto UNIQUE(idProducto,nombre,precio),
+	CONSTRAINT UNIQUE_Producto UNIQUE(nombre,precio),
 	CONSTRAINT FK_Categoria FOREIGN KEY (idCategoria) REFERENCES catalogos.CategoriaProducto(id))
 END
 GO
