@@ -87,13 +87,14 @@ IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
 TABLE_SCHEMA = 'recursosHumanos' AND TABLE_NAME = 'Empleado')
 BEGIN
 	CREATE TABLE recursosHumanos.Empleado(
-	legajo INT PRIMARY KEY,
+	--id INT IDENTITY(1,1) PRIMARY KEY,
+	legajo INT IDENTITY(257020,1) PRIMARY KEY,
 	nombre VARCHAR(50),
 	apellido VARCHAR(50),
 	dni INT UNIQUE,
 	cuil CHAR (13),
-	emailPer VARCHAR(60) UNIQUE,
-	emailEmp VARCHAR(60) UNIQUE,
+	emailPer VARCHAR(60),
+	emailEmp VARCHAR(60),
 	direccion VARCHAR(100),
 	idSucursal INT,
 	idTurno INT,
@@ -103,6 +104,8 @@ BEGIN
 	CONSTRAINT FK_Sucursal FOREIGN KEY (idSucursal) REFERENCES sucursales.Sucursal(id),
 	CONSTRAINT FK_Turno FOREIGN KEY (idTurno) REFERENCES recursosHumanos.TurnoTrabajo(id),
 	CONSTRAINT FK_Cargo FOREIGN KEY (idCargo) REFERENCES recursosHumanos.CargoTrabajo(id))
+
+	--CREATE NONCLUSTERED INDEX Idx_legajo ON recursosHumanos.Empleado(legajo);
 END
 GO
 
@@ -113,7 +116,7 @@ TABLE_SCHEMA = 'clientes' AND TABLE_NAME = 'TipoCliente')
 BEGIN
 	CREATE TABLE clientes.TipoCliente(
 	id INT IDENTITY (1,1) PRIMARY KEY,
-	tipo CHAR(10) UNIQUE)
+	tipo VARCHAR(20) UNIQUE)
 END
 GO
 
@@ -140,13 +143,13 @@ BEGIN
 END
 GO
 
-IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE -- VARIOS CAMBIOS
 TABLE_SCHEMA = 'catalogos' AND TABLE_NAME = 'Producto')
 BEGIN
 	CREATE TABLE catalogos.Producto(
 	id INT IDENTITY (1,1) PRIMARY KEY,
 	nombre VARCHAR(100),
-	precio DECIMAL(9,2),
+	precioARS DECIMAL(9,2),
 	precioUSD DECIMAL(9,2),
 	precioRef DECIMAL(9,2),
 	unidadRef VARCHAR(10),
@@ -154,8 +157,9 @@ BEGIN
 	proveedor VARCHAR(50),
 	cantXUn VARCHAR(20),
 	idCategoria INT,
+	activo INT DEFAULT 1,
 
-	CONSTRAINT UNIQUE_Producto UNIQUE(nombre,precio),
+	CONSTRAINT UNIQUE_Producto UNIQUE(nombre,precioARS,precioUSD),
 	CONSTRAINT FK_Categoria FOREIGN KEY (idCategoria) REFERENCES catalogos.CategoriaProducto(id))
 END
 GO
@@ -175,32 +179,40 @@ IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
 TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'Factura')
 BEGIN
 	CREATE TABLE ventas.Factura(
-	idFactura CHAR(11) PRIMARY KEY NONCLUSTERED,
+	id INT IDENTITY(1,1) PRIMARY KEY,
+	idFactura CHAR(11) UNIQUE,
 	idTipoFactura INT,
 	ciudad VARCHAR(60),
 	idTipoCliente INT,
 	generoCliente CHAR(10) CHECK(generoCliente IN ('Male','Female')),
+	legajoEmp INT,
+	--monto DECIMAL(16,2), --nuevo
 	fecha DATE,
 	hora TIME,
-	legajoEmp INT,
 	estado char(6) DEFAULT 'Impaga' CHECK(estado IN ('Impaga','Pagada')),
-	
+
 	CONSTRAINT FK_Empleado FOREIGN KEY (legajoEmp) REFERENCES recursosHumanos.Empleado(legajo),
-	CONSTRAINT FK_TipoFactura FOREIGN KEY (idTipoFactura) REFERENCES ventas.TipoFactura(id)),
+	CONSTRAINT FK_TipoFactura FOREIGN KEY (idTipoFactura) REFERENCES ventas.TipoFactura(id),
 	CONSTRAINT FK_TipoCliente FOREIGN KEY (idTipoCliente) REFERENCES clientes.TipoCliente(id))
+
+	CREATE NONCLUSTERED INDEX Idx_idFactura ON ventas.Factura(idFactura);
 END
 GO
 
 --- COMPROBANTE
 
+/*
 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
 TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'TipoComprobante')
 BEGIN
 	CREATE TABLE ventas.TipoComprobante(
 	id INT IDENTITY (1,1) PRIMARY KEY,
 	tipo VARCHAR(20) UNIQUE)
+
+	INSERT INTO ventas.TipoComprobante VALUES ('Factura'),('Nota de credito') ; --NUEVOOOO
 END
 GO
+*/
 
 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
 TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'MedioDePago')
@@ -217,13 +229,43 @@ TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'Comprobante')
 BEGIN
 	CREATE TABLE ventas.Comprobante(
 	id INT IDENTITY (1,1) PRIMARY KEY,
-	idTipo INT,
+	--idTipo INT,
 	idFactura CHAR(11),
-	idMedioPago INT,
+	--idMedioPago INT,
+	fecha DATE,
+	hora TIME,
+	--credito DECIMAL(12,2), --nuevo
 
-	CONSTRAINT FK_TipoComprobante FOREIGN KEY (idTipo) REFERENCES ventas.TipoComprobante(id),
-	CONSTRAINT FK_FacturaAsociada FOREIGN KEY (idFactura) REFERENCES ventas.Factura(idFactura),
+	CONSTRAINT FK_FacturaAsociada FOREIGN KEY (idFactura) REFERENCES ventas.Factura(idFactura))
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
+TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'ComprobanteFactura')
+BEGIN
+	CREATE TABLE ventas.ComprobanteFactura(
+	id INT,
+	monto DECIMAL(12,2),
+	identificadorPago VARCHAR(50),
+	idMedioPago INT,
+	
+	CONSTRAINT FK_ComprobanteFact FOREIGN KEY (id) REFERENCES ventas.Comprobante(id),
+	CONSTRAINT PK_ComprobanteFact PRIMARY KEY (id),
 	CONSTRAINT FK_MedioDePago FOREIGN KEY (idMedioPago) REFERENCES ventas.MedioDePago(id))
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE
+TABLE_SCHEMA = 'ventas' AND TABLE_NAME = 'NotaDeCredito')
+BEGIN
+	CREATE TABLE ventas.NotaDeCredito(
+	id INT,
+	credito DECIMAL(12,2),
+	tipoProducto VARCHAR(50),
+	motivo VARCHAR(50),
+	
+	CONSTRAINT FK_ComprobanteCred FOREIGN KEY (id) REFERENCES ventas.Comprobante(id),
+	CONSTRAINT PK_ComprobanteCred PRIMARY KEY (id))
 END
 GO
 
@@ -236,13 +278,15 @@ BEGIN
 	idFactura CHAR(11),
 	idProducto INT,
 	cantidad INT,
+	subtotal DECIMAL(14,2), --nuevo
 	
 	CONSTRAINT PK_FacturaYProducto PRIMARY KEY (idFactura,idProducto),
+	CONSTRAINT UNIQUE_FacturaProductoCantidad UNIQUE (idFactura,idProducto,cantidad),
 	CONSTRAINT FK_Factura FOREIGN KEY (idFactura) REFERENCES ventas.Factura(idFactura),
 	CONSTRAINT FK_Producto FOREIGN KEY (idProducto) REFERENCES catalogos.Producto(id))
 END
 GO
 
 /*
-
+use master
 */
